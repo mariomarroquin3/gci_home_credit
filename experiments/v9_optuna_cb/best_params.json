@@ -1,0 +1,12 @@
+{
+ "learning_rate": 0.029183164130247925,
+ "depth": 4,
+ "l2_leaf_reg": 1.3222009323344572,
+ "random_strength": 3.3178431085613704,
+ "bagging_temperature": 1.8830471167862892,
+ "min_data_in_leaf": 138,
+ "od_wait": 300,
+ "od_type": "Iter",
+ "eval_metric": "AUC",
+ "random_seed": 42
+}
