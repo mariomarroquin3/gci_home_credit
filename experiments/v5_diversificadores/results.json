@@ -1,0 +1,8 @@
+{
+  "catboost": {
+    "cv_auc": 0.76143
+  },
+  "xgboost": {
+    "cv_auc": 0.76186
+  }
+}
