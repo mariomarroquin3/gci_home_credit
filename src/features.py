@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 
 DAYS_EMPLOYED_SENTINEL = 365243
+NA_FLAG_COLS = ["EXT_SOURCE_1", "EXT_SOURCE_3", "OWN_CAR_AGE", "AMT_REQ_CREDIT_BUREAU_YEAR"]
 
 
 def clean(df: pd.DataFrame) -> pd.DataFrame:
@@ -16,15 +17,34 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
 
 def add_features(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
+    # flags de nulos (el faltante predice: ver EDA)
+    for c in NA_FLAG_COLS:
+        df[f"{c}_ISNA"] = df[c].isna().astype(int)
+    # ratios financieros
     df["CREDIT_INCOME_RATIO"] = df["AMT_CREDIT"] / df["AMT_INCOME_TOTAL"]
     df["ANNUITY_INCOME_RATIO"] = df["AMT_ANNUITY"] / df["AMT_INCOME_TOTAL"]
+    df["CREDIT_ANNUITY"] = df["AMT_CREDIT"] / df["AMT_ANNUITY"]
     df["CREDIT_TERM"] = df["AMT_ANNUITY"] / df["AMT_CREDIT"]
     df["GOODS_CREDIT_RATIO"] = df["AMT_GOODS_PRICE"] / df["AMT_CREDIT"]
-    df["EMPLOYED_BIRTH_RATIO"] = df["DAYS_EMPLOYED"] / df["DAYS_BIRTH"]
+    df["DOWNPAYMENT"] = df["AMT_GOODS_PRICE"] - df["AMT_CREDIT"]
     df["INCOME_PER_PERSON"] = df["AMT_INCOME_TOTAL"] / df["CNT_FAM_MEMBERS"]
+    # tiempo
+    df["AGE_YEARS"] = -df["DAYS_BIRTH"] / 365.25
+    df["EMPLOYED_YEARS"] = -df["DAYS_EMPLOYED"] / 365.25
+    df["EMPLOYED_BIRTH_RATIO"] = df["DAYS_EMPLOYED"] / df["DAYS_BIRTH"]
+    df["REGISTRATION_YEARS"] = -df["DAYS_REGISTRATION"] / 365.25
+    df["PHONE_CHANGE_YEARS"] = -df["DAYS_LAST_PHONE_CHANGE"] / 365.25
+    # buro y contacto
+    bur = [c for c in df.columns if c.startswith("AMT_REQ_CREDIT_BUREAU_")]
+    df["BUREAU_REQ_TOTAL"] = df[bur].sum(axis=1, min_count=1)
+    df["PHONE_FLAGS_SUM"] = df[["FLAG_MOBIL", "FLAG_EMP_PHONE", "FLAG_WORK_PHONE"]].sum(axis=1)
+    df["CHILDREN_RATIO"] = df["CNT_CHILDREN"] / df["CNT_FAM_MEMBERS"]
+    # EXT_SOURCE: stats basicos
     ext = df[["EXT_SOURCE_1", "EXT_SOURCE_2", "EXT_SOURCE_3"]]
     df["EXT_MEAN"] = ext.mean(axis=1)
     df["EXT_STD"] = ext.std(axis=1)
+    df["EXT_MIN"] = ext.min(axis=1)
+    df["EXT_MAX"] = ext.max(axis=1)
     df["EXT_PROD"] = ext.prod(axis=1, min_count=3)
     df["EXT_NA_COUNT"] = ext.isna().sum(axis=1)
     return df
