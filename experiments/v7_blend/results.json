@@ -1,0 +1,14 @@
+{
+  "individuales": {
+    "lgbm": 0.76151,
+    "catboost": 0.76143,
+    "xgboost": 0.76186
+  },
+  "pesos": {
+    "lgbm": 0.3,
+    "catboost": 0.35,
+    "xgboost": 0.35
+  },
+  "cv_blend": 0.76366,
+  "delta_vs_mejor": 0.0018
+}
