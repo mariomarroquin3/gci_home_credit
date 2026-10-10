@@ -12,15 +12,19 @@ from src.data import load_data
 from src.features import build
 
 PARAMS = {
+    # Optuna 60 trials (exp/optuna-v4): CV AUC 0.76145 (+0.00336 vs baseline 0.75809)
     "objective": "binary",
     "metric": "auc",
-    "learning_rate": 0.03,
-    "num_leaves": 31,
-    "min_child_samples": 50,
-    "feature_fraction": 0.8,
-    "bagging_fraction": 0.8,
+    "learning_rate": 0.008135825913706748,
+    "num_leaves": 37,
+    "min_child_samples": 197,
+    "feature_fraction": 0.40362837123334017,
+    "bagging_fraction": 0.9525103687282102,
     "bagging_freq": 1,
-    "lambda_l2": 1.0,
+    "lambda_l1": 0.00011657904410727821,
+    "lambda_l2": 3.0181881636817223,
+    "min_split_gain": 0.22728540197274544,
+    "max_depth": 9,
     "seed": SEED,
     "deterministic": True,
     "force_row_wise": True,
