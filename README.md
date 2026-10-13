@@ -70,10 +70,18 @@ python -m src.train --no-pseudo            # solo pass 1 (equivale a v12)
 Cada corrida guarda OOF/test preds (`.npy`), modelos, pesos del blend y `metrics.json` en
 `outputs/run_<timestamp>/`; 2 corridas con mismas seeds = mismo CSV. EDA en `notebooks/01_eda.ipynb`.
 
+Selección de candidatos (RSKF pareado, nunca por public LB):
+```bash
+python -m src.train --seeds 42,43,44 --folds 5 --tag A     # RSKF 3x5 por candidato
+python -m src.validate outputs/run_<A>                      # AUC media ± std + blend con pesos anidados
+python -m src.validate outputs/run_<A> outputs/run_<B>      # Δ pareado por seed (B - A)
+```
+
 ## Estructura
 ```
 src/config.py     rutas, seeds, hiperparámetros tuneados (Optuna), umbral pseudo-label
 src/data.py       carga de datos
+src/validate.py   RSKF pareado entre corridas + AUC del blend con pesos anidados (honesto)
 src/features.py   limpieza y features v1
 src/models.py     LGBM / CatBoost / XGBoost por seed con early stopping (+ pseudo-rows)
 src/blend.py      hill-climbing de pesos sobre OOF
