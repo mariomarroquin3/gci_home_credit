@@ -11,7 +11,7 @@ SUBMISSION_DIR = ROOT / "submissions"
 
 SEED = 42
 SEEDS = [42, 43, 44, 45, 46]  # seed-averaging (exp/seedavg-v12)
-N_FOLDS = 5
+N_FOLDS = 10  # 10 vs 5 folds: +0.0010 CV (LGBM, 3 seeds de folds, revision 2026-10-13)
 ID_COL = "SK_ID_CURR"
 TARGET = "TARGET"
 
