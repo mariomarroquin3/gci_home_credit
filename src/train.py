@@ -60,6 +60,8 @@ def main():
 
     print("== pass 1 (sin pseudo) ==")
     oof1, tp1, oof1_raw, _ = run_pass(X, y, X_test, cat_cols, seeds, args.folds)
+    for m in MODELS:  # per-seed OOF: insumo del RSKF pareado de seleccion final (nov)
+        np.save(out / f"oof_{m}_perseed_pass1.npy", oof1_raw[m])
     for m in MODELS:
         print(f"  {m}: OOF seed-avg {roc_auc_score(y, oof1[m]):.5f}")
     w1, cv1 = hill_climb_weights(oof1, y)
@@ -74,9 +76,10 @@ def main():
         yp = np.zeros(int(mask.sum()), dtype=int)
         n_pseudo = int(mask.sum())
         print(f"== pass 2 (pseudo-labels: {n_pseudo} filas negativas) ==")
-        oof2, tp2, _, _ = run_pass(X, y, X_test, cat_cols, seeds, args.folds, Xp, yp, out / "models")
+        oof2, tp2, oof2_raw, _ = run_pass(X, y, X_test, cat_cols, seeds, args.folds, Xp, yp, out / "models")
         for m in MODELS:
             print(f"  {m}: OOF PL seed-avg {roc_auc_score(y, oof2[m]):.5f}")
+            np.save(out / f"oof_{m}_perseed.npy", oof2_raw[m])
         w2, cv2 = hill_climb_weights(oof2, y)
         print(f"  blend pass2: {cv2:.5f} {w2}")
 
