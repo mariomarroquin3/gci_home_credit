@@ -42,6 +42,8 @@ XGB_PARAMS = {
     "subsample": 0.9174841990499791, "colsample_bytree": 0.5037589701822436,
     "reg_alpha": 8.778854079749578, "reg_lambda": 3.009713063266187, "gamma": 0.2565501232341565,
 }
+# Restricciones monotonas (P(default) decrece con EXT_SOURCE): LGBM +0.0006, XGB +0.0002 CV (revision 2026-10-13)
+MONOTONE_DEC = ["EXT_SOURCE_1", "EXT_SOURCE_2", "EXT_SOURCE_3"]
 MAX_ROUNDS = {"lgbm": 20000, "xgb": 20000}
 ES_ROUNDS = 300
 

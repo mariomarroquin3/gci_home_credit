@@ -1,4 +1,4 @@
-"""Pipeline de producción (exp/pseudo-pipeline-v20, CV OOF 0.76488):
+"""Pipeline de producción (base exp/pseudo-pipeline-v20; pseudo-labels opcionales):
 
   pass 1: LGBM-t + CB-t + XGB-t, seed-averaging 5 seeds x 5 folds (OOF honesto)
   pseudo: filas de test con prob(blend pass1) < 0.03 como negativos extra (15k aprox)
@@ -8,7 +8,7 @@
 Uso:
   python -m src.train                      # pipeline completa (~4 h en CPU)
   python -m src.train --seeds 42 --folds 2 # smoke test rápido
-  python -m src.train --no-pseudo          # solo pass 1 (equivale a exp/seedavg-v12)
+  python -m src.train --pseudo             # + pass 2 con pseudo-labels (v20; CV optimista)
 """
 import argparse
 import json
@@ -42,7 +42,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seeds", type=str, default=",".join(map(str, SEEDS)))
     ap.add_argument("--folds", type=int, default=N_FOLDS)
-    ap.add_argument("--no-pseudo", action="store_true")
+    # Pseudo-labels apagados por defecto: seleccionarlos con el blend global de pass 1 filtra
+    # labels del fold de validacion (CV +0.0004..+0.0009); con seleccion por fold el efecto
+    # es -0.0001..-0.0003 (revision 2026-10-13). --pseudo solo para reproducir v20.
+    ap.add_argument("--pseudo", action="store_true")
     ap.add_argument("--tag", type=str, default="")
     args = ap.parse_args()
     seeds = [int(s) for s in args.seeds.split(",")]
@@ -68,7 +71,7 @@ def main():
     print(f"  blend pass1: {cv1:.5f} {w1}")
     p1_test = apply_weights(tp1, w1)
 
-    if args.no_pseudo:
+    if not args.pseudo:
         oof2, tp2, w2, cv2, n_pseudo = oof1, tp1, w1, cv1, 0
     else:
         mask = p1_test < PSEUDO_MAX_PROB

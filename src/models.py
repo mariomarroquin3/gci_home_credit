@@ -11,7 +11,11 @@ import xgboost as xgb
 from catboost import CatBoostClassifier, Pool
 from sklearn.model_selection import StratifiedKFold
 
-from src.config import CB_PARAMS, ES_ROUNDS, LGBM_PARAMS, MAX_ROUNDS, XGB_PARAMS
+from src.config import CB_PARAMS, ES_ROUNDS, LGBM_PARAMS, MAX_ROUNDS, MONOTONE_DEC, XGB_PARAMS
+
+
+def _monotone(columns):
+    return [-1 if c in MONOTONE_DEC else 0 for c in columns]
 
 
 def _folds(y, n_folds, seed):
@@ -30,7 +34,8 @@ def run_lgbm(X, y, X_test, seeds, n_folds, X_pseudo=None, y_pseudo=None, save_di
                 y_tr = np.r_[y_tr, y_pseudo]
                 for c in X_tr.select_dtypes(include=["object", "string"]).columns:
                     X_tr[c] = X_tr[c].astype("category")
-            params = dict(LGBM_PARAMS, seed=seed)
+            params = dict(LGBM_PARAMS, seed=seed, monotone_constraints=_monotone(X.columns),
+                          monotone_constraints_method="advanced")
             m = lgb.train(params, lgb.Dataset(X_tr, y_tr), num_boost_round=MAX_ROUNDS["lgbm"],
                           valid_sets=[lgb.Dataset(X.iloc[va], y[va])],
                           callbacks=[lgb.early_stopping(ES_ROUNDS, verbose=False)])
@@ -72,6 +77,7 @@ def run_cb(X, y, X_test, cat_cols, seeds, n_folds, X_pseudo=None, y_pseudo=None,
 def run_xgb(X, y, X_test, cat_cols, seeds, n_folds, X_pseudo=None, y_pseudo=None, save_dir=None):
     Xd = pd.get_dummies(X, columns=cat_cols, dummy_na=True)
     Xd_test = pd.get_dummies(X_test, columns=cat_cols, dummy_na=True).reindex(columns=Xd.columns, fill_value=0)
+    mono = "(" + ",".join(map(str, _monotone(Xd.columns))) + ")"
     Xd_pseudo = Xd_test.iloc[X_pseudo.index].reset_index(drop=True) if X_pseudo is not None else None
     oof = np.zeros((len(seeds), len(X)))
     tpred = np.zeros((len(seeds), len(X_test)))
@@ -81,7 +87,7 @@ def run_xgb(X, y, X_test, cat_cols, seeds, n_folds, X_pseudo=None, y_pseudo=None
             if Xd_pseudo is not None:
                 X_tr = pd.concat([X_tr, Xd_pseudo], ignore_index=True)
                 y_tr = np.r_[y_tr, y_pseudo]
-            m = xgb.train(dict(XGB_PARAMS, seed=seed), xgb.DMatrix(X_tr, y_tr),
+            m = xgb.train(dict(XGB_PARAMS, seed=seed, monotone_constraints=mono), xgb.DMatrix(X_tr, y_tr),
                           num_boost_round=MAX_ROUNDS["xgb"],
                           evals=[(xgb.DMatrix(Xd.iloc[va], y[va]), "va")],
                           early_stopping_rounds=ES_ROUNDS, verbose_eval=False)
