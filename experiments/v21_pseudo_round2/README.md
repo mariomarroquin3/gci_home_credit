@@ -10,3 +10,12 @@ Etiquetador = blend v20. LGBM-tuned single-seed. Ref: round-1 (v19) = 0.76215.
 
 Conclusion: la ganancia de pseudo-labeling se captura en la ronda 1; iterar solo recicla ruido.
 Una sola ronda con p<0.03 es el punto optimo. No hay v22.
+
+---
+
+> **CORRECCION 2026-10-13 (exp/pl-leak-v27):** la ganancia atribuida al pseudo-labeling en este
+> experimento fue medida con seleccion GLOBAL de pseudo-filas (labeler entrenado sobre el 100%
+> de train, incluidos los folds de validacion) -> fuga de seleccion de **+0.00096**. Con labeler
+> anidado por fold (protocolo honesto), el efecto del PL es **-0.00017 ~ 0**. El pipeline de
+> produccion queda SIN pseudo-labels (= v12). Este README se conserva como registro del error
+> metodologico y su correccion.
