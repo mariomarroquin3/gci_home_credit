@@ -8,7 +8,7 @@
 Uso:
   python -m src.train                      # pipeline completa (~4 h en CPU)
   python -m src.train --seeds 42 --folds 2 # smoke test rápido
-  python -m src.train --no-pseudo          # solo pass 1 (equivale a exp/seedavg-v12)
+  python -m src.train --pseudo             # + pass 2 (v20; CV optimista por fuga de seleccion, ver v27)
 """
 import argparse
 import json
@@ -42,7 +42,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seeds", type=str, default=",".join(map(str, SEEDS)))
     ap.add_argument("--folds", type=int, default=N_FOLDS)
-    ap.add_argument("--no-pseudo", action="store_true")
+    # PL apagado por defecto: seleccion global de pseudo-filas filtra labels del fold de
+    # validacion (fuga +0.00096, exp/pl-leak-v27); efecto honesto anidado ~0 (-0.00017).
+    ap.add_argument("--pseudo", action="store_true")
     ap.add_argument("--tag", type=str, default="")
     args = ap.parse_args()
     seeds = [int(s) for s in args.seeds.split(",")]
@@ -68,7 +70,7 @@ def main():
     print(f"  blend pass1: {cv1:.5f} {w1}")
     p1_test = apply_weights(tp1, w1)
 
-    if args.no_pseudo:
+    if not args.pseudo:
         oof2, tp2, w2, cv2, n_pseudo = oof1, tp1, w1, cv1, 0
     else:
         mask = p1_test < PSEUDO_MAX_PROB

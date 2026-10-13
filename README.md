@@ -21,8 +21,11 @@ Hallazgos del EDA inicial (oct 2026):
 ## Estado actual
 
 **Pipeline de producción (`python -m src.train`): blend LGBM+CatBoost+XGBoost tuneados (Optuna),
-seed-averaging 5 seeds × 5 folds, pseudo-labeling 1 ronda (p<0.03 → negativos) y pesos por
-hill-climbing sobre OOF. CV OOF: 0.76488.**
+seed-averaging 5 seeds × 5 folds y pesos por hill-climbing sobre OOF. CV OOF: 0.76460.**
+
+> ⚠️ Corrección 2026-10-13 (exp/pl-leak-v27): el pseudo-labeling de v20 medía +0.00028 sobre v12,
+> pero la selección global de pseudo-filas filtraba labels del fold de validación (fuga +0.00096
+> medida; efecto honesto anidado −0.00017 ≈ 0). **Producción = pipeline v12 sin pseudo-labels.**
 
 Scoreboard (CV OOF 5-fold honesto; LB = leaderboard público):
 
@@ -32,13 +35,15 @@ Scoreboard (CV OOF 5-fold honesto; LB = leaderboard público):
 | + features v1 | 0.7583 | — |
 | LGBM tuneado Optuna (v4/v6) | 0.7615 | — |
 | Blend 3 GBMs (v7) | 0.7637 | **0.7666** (pos. 169/462) |
-| + seed-averaging 5 seeds (v12) | 0.7646 | — |
-| **+ pseudo-labeling (v20, producción)** | **0.7649** | — |
+| **+ seed-averaging 5 seeds (v12, producción)** | **0.7646** | — |
+| ~~+ pseudo-labeling (v20)~~ | ~~0.7649~~ inflado (v27) | — |
 
 Experimentos v1–v21: una rama `exp/*` por experimento con README y resultados (incluye los
 negativos documentados: features de 2º nivel, KNN-500, TE-OOF, stacking, NN-MLP, PL ronda-2).
-Análisis pareado 5 seeds v20 vs v12: +0.00047 ± 0.00011 (t=9.5, p<0.005) — la mejora es sistemática.
-Decisión de submission final: **Repeated StratifiedKFold**, nunca public LB (ruido ±0.003 del subset).
+Lección metodológica (v27): una ganancia pareada y sistemática también puede ser una *fuga
+sistemática* — toda selección de datos auxiliares debe ser anidada por fold.
+Decisión de submission final: **Repeated StratifiedKFold**, nunca public LB (ruido ±0.003 del subset;
+el reglamento confirma leaderboard privado sobre el test completo al cierre).
 - Meta M3 (red de seguridad): pipeline end-to-end reproducible con seeds fijas y refs completo.
 
 ## Metodología
@@ -65,7 +70,7 @@ Copia `train.csv`, `test.csv` y `sample_submission.csv` a `data/raw/` (no se ver
 ```bash
 python -m src.train                        # pipeline completa v20 (~4 h CPU) -> submissions/
 python -m src.train --seeds 42 --folds 2   # smoke test
-python -m src.train --no-pseudo            # solo pass 1 (equivale a v12)
+python -m src.train --pseudo               # + pass 2 PL (v20; solo reproducción histórica, ver v27)
 ```
 Cada corrida guarda OOF/test preds (`.npy`), modelos, pesos del blend y `metrics.json` en
 `outputs/run_<timestamp>/`; 2 corridas con mismas seeds = mismo CSV. EDA en `notebooks/01_eda.ipynb`.
