@@ -10,3 +10,12 @@ Pseudo rows: test p<0.03 del blend v12 (15,156, todas negativas). OOF honesto.
 
 **Blend v20: CV 0.76488** (w .29/.37/.34) = **+0.00028 vs v12** → nuevo mejor pipeline medido.
 Submission: `submission_v20.csv`. Estimado LB ~0.7675 (calibracion +0.003).
+
+---
+
+> **CORRECCION 2026-10-13 (exp/pl-leak-v27):** la ganancia atribuida al pseudo-labeling en este
+> experimento fue medida con seleccion GLOBAL de pseudo-filas (labeler entrenado sobre el 100%
+> de train, incluidos los folds de validacion) -> fuga de seleccion de **+0.00096**. Con labeler
+> anidado por fold (protocolo honesto), el efecto del PL es **-0.00017 ~ 0**. El pipeline de
+> produccion queda SIN pseudo-labels (= v12). Este README se conserva como registro del error
+> metodologico y su correccion.
