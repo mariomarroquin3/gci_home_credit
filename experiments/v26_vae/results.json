@@ -1,0 +1,7 @@
+{
+ "vae_aug_cv": 0.74966,
+ "delta_vs_recheck": -0.0114,
+ "delta_vs_v6": -0.01185,
+ "n_synthetic": 10000,
+ "epochs": 15
+}
