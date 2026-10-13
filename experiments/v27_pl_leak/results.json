@@ -1,0 +1,15 @@
+{
+ "baseline": 0.76106,
+ "A_global_pl": 0.76185,
+ "B_nested_pl": 0.76089,
+ "delta_A": 0.00079,
+ "delta_B": -0.00017,
+ "leak_A_minus_B": 0.00096,
+ "nested_counts": [
+  15452,
+  16059,
+  13449,
+  14983,
+  15322
+ ]
+}
