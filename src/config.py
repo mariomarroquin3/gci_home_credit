@@ -47,6 +47,10 @@ MONOTONE_DEC = ["EXT_SOURCE_1", "EXT_SOURCE_2", "EXT_SOURCE_3"]
 MAX_ROUNDS = {"lgbm": 20000, "xgb": 20000}
 ES_ROUNDS = 300
 
+# Miembros extra del blend (src.variants, exp v30): solo los que mejoran el blend anidado en
+# las 3 seeds del RSKF 3x5 (python -m src.validate <run> --add <nombre>)
+EXTRA_MODELS = ["lgbm_init", "lgbm_linear"]
+
 # Pesos del blend por hill-climbing sobre OOF (exp/pseudo-pipeline-v20)
 BLEND_WEIGHTS = {"lgbm": 0.29, "cb": 0.37, "xgb": 0.34}
 
