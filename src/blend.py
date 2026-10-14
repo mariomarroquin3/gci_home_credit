@@ -5,13 +5,21 @@ import numpy as np
 from sklearn.metrics import roc_auc_score
 
 
-def hill_climb_weights(oof_dict, y, grid=20, fine_step=0.01):
+def fast_auc(y, p):
+    """AUC por ranks (sin corrección de empates; preds continuas). ~4x más rápido que sklearn."""
+    r = np.empty(len(p))
+    r[np.argsort(p, kind="mergesort")] = np.arange(1, len(p) + 1)
+    n1 = y.sum()
+    return (r[y == 1].sum() - n1 * (n1 + 1) / 2) / (n1 * (len(y) - n1))
+
+
+def hill_climb_weights(oof_dict, y, grid=20, fine_step=0.01, score_fn=roc_auc_score):
     """Pesos en simplex que maximizan AUC del blend sobre OOF. Determinista."""
     names = list(oof_dict)
     mats = [oof_dict[k] for k in names]
 
     def score(w):
-        return roc_auc_score(y, sum(wi * m for wi, m in zip(w, mats)))
+        return score_fn(y, sum(wi * m for wi, m in zip(w, mats)))
 
     best_s, best_w = -1.0, None
     for combo in itertools.product(range(grid + 1), repeat=len(names)):
