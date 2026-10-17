@@ -1,6 +1,7 @@
 """Pipeline de producción (base exp/pseudo-pipeline-v20; pseudo-labels opcionales):
 
-  pass 1: LGBM-t + CB-t + XGB-t, seed-averaging 5 seeds x 5 folds (OOF honesto)
+  pass 1: LGBM-t + CB-t + XGB-t, seed-averaging 5 seeds x 10 folds (OOF honesto)
+          + miembros extra de src.variants (config.EXTRA_MODELS; exp v30), mismos folds
   pseudo: filas de test con prob(blend pass1) < 0.03 como negativos extra (15k aprox)
   pass 2: mismos 3 modelos re-entrenados con pseudo-filas en cada fold de train
   blend:  pesos por hill-climbing sobre OOF pass 2 -> submission
@@ -8,7 +9,8 @@
 Uso:
   python -m src.train                      # pipeline completa (~4 h en CPU)
   python -m src.train --seeds 42 --folds 2 # smoke test rápido
-  python -m src.train --pseudo             # + pass 2 con pseudo-labels (v20; CV optimista)
+  python -m src.train --pseudo             # + pass 2 con pseudo-labels (v20; CV optimista; sin extras)
+  python -m src.train --extra ""           # solo LGBM+CB+XGB (pipeline previo a v30)
 """
 import argparse
 import json
@@ -18,21 +20,24 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import roc_auc_score
 
-from src.blend import apply_weights, hill_climb_weights
-from src.config import (ID_COL, N_FOLDS, OUTPUT_DIR, PSEUDO_MAX_PROB, SEEDS,
+from src.blend import apply_weights, fast_auc, hill_climb_weights
+from src.config import (EXTRA_MODELS, ID_COL, N_FOLDS, OUTPUT_DIR, PSEUDO_MAX_PROB, SEEDS,
                         SUBMISSION_DIR, TARGET, seed_everything)
 from src.data import load_data
 from src.features import build
 from src.models import run_cb, run_lgbm, run_xgb
+from src.variants import run_variant
 
-MODELS = ["lgbm", "cb", "xgb"]
+BASE_MODELS = ["lgbm", "cb", "xgb"]
 
 
-def run_pass(X, y, X_test, cat_cols, seeds, n_folds, Xp=None, yp=None, save_dir=None):
+def run_pass(X, y, X_test, cat_cols, seeds, n_folds, Xp=None, yp=None, save_dir=None, extra=()):
     oof, tpred = {}, {}
     oof["lgbm"], tpred["lgbm"] = run_lgbm(X, y, X_test, seeds, n_folds, Xp, yp, save_dir)
     oof["cb"], tpred["cb"] = run_cb(X, y, X_test, cat_cols, seeds, n_folds, Xp, yp, save_dir)
     oof["xgb"], tpred["xgb"] = run_xgb(X, y, X_test, cat_cols, seeds, n_folds, Xp, yp, save_dir)
+    for name in extra:  # variantes descorrelacionadas (src.variants), sin pseudo-rows
+        oof[name], tpred[name] = run_variant(name, X, y, X_test, cat_cols, seeds, n_folds)
     # seed-averaging: media de OOF por seed (cada seed = SKF propio -> sigue siendo OOF honesto)
     return {m: o.mean(axis=0) for m, o in oof.items()}, \
            {m: t.mean(axis=0) for m, t in tpred.items()}, oof, tpred
@@ -46,9 +51,13 @@ def main():
     # labels del fold de validacion (CV +0.0004..+0.0009); con seleccion por fold el efecto
     # es -0.0001..-0.0003 (revision 2026-10-13). --pseudo solo para reproducir v20.
     ap.add_argument("--pseudo", action="store_true")
+    ap.add_argument("--extra", type=str, default=",".join(EXTRA_MODELS),
+                    help="miembros extra de src.variants separados por coma ('' = ninguno)")
     ap.add_argument("--tag", type=str, default="")
     args = ap.parse_args()
     seeds = [int(s) for s in args.seeds.split(",")]
+    extra = [] if args.pseudo else [e for e in args.extra.split(",") if e]
+    models = BASE_MODELS + extra
     seed_everything(seeds[0])
 
     train, test, sample = load_data()
@@ -62,12 +71,15 @@ def main():
     (out / "models").mkdir(parents=True, exist_ok=True)
 
     print("== pass 1 (sin pseudo) ==")
-    oof1, tp1, oof1_raw, _ = run_pass(X, y, X_test, cat_cols, seeds, args.folds)
-    for m in MODELS:  # per-seed OOF: insumo del RSKF pareado de seleccion final (nov)
+    oof1, tp1, oof1_raw, tp1_raw = run_pass(X, y, X_test, cat_cols, seeds, args.folds, extra=extra)
+    for m in extra:  # mismo formato que src.variants -> src.validate --add funciona sobre esta corrida
+        np.save(out / f"test_{m}_perseed.npy", tp1_raw[m])
+    for m in models:  # per-seed OOF: insumo del RSKF pareado de seleccion final (nov)
         np.save(out / f"oof_{m}_perseed_pass1.npy", oof1_raw[m])
-    for m in MODELS:
+    for m in models:
         print(f"  {m}: OOF seed-avg {roc_auc_score(y, oof1[m]):.5f}")
-    w1, cv1 = hill_climb_weights(oof1, y)
+    w1, _ = hill_climb_weights(oof1, y, score_fn=fast_auc)
+    cv1 = roc_auc_score(y, apply_weights(oof1, w1))
     print(f"  blend pass1: {cv1:.5f} {w1}")
     p1_test = apply_weights(tp1, w1)
 
@@ -80,7 +92,7 @@ def main():
         n_pseudo = int(mask.sum())
         print(f"== pass 2 (pseudo-labels: {n_pseudo} filas negativas) ==")
         oof2, tp2, oof2_raw, _ = run_pass(X, y, X_test, cat_cols, seeds, args.folds, Xp, yp, out / "models")
-        for m in MODELS:
+        for m in BASE_MODELS:
             print(f"  {m}: OOF PL seed-avg {roc_auc_score(y, oof2[m]):.5f}")
             np.save(out / f"oof_{m}_perseed.npy", oof2_raw[m])
         w2, cv2 = hill_climb_weights(oof2, y)
@@ -92,7 +104,7 @@ def main():
     assert sub[TARGET].notna().all() and len(sub) == len(sample)
     sub_path = SUBMISSION_DIR / f"sub_{stamp}{tag}_cv{cv2:.5f}.csv"
     sub.to_csv(sub_path, index=False)
-    for m in MODELS:
+    for m in oof2:
         np.save(out / f"oof_{m}.npy", oof2[m])
         np.save(out / f"test_{m}.npy", tp2[m])
     metrics = {"time": stamp, "seeds": seeds, "n_folds": args.folds, "pseudo_rows": n_pseudo,
