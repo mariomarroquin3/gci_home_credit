@@ -20,9 +20,26 @@ Hallazgos del EDA inicial (oct 2026):
 
 ## Estado actual
 
-- **Baseline (commit inicial, 2026-10-08):** LightGBM, CV 5-fold **AUC 0.7581**.
-  Params: `lr=0.03, num_leaves=31, min_child_samples=50, feature_fraction=0.8, bagging=0.8, lambda_l2=1.0`, early stopping 200, seeds en `src/config.py`.
-- Meta M3 (red de seguridad): pipeline end-to-end con CV ≥ 0.7681 (baseline + 0.01).
+**Pipeline de producción (`python -m src.train`): blend LGBM+CatBoost+XGBoost tuneados (Optuna),
+seed-averaging 5 seeds × 5 folds, pseudo-labeling 1 ronda (p<0.03 → negativos) y pesos por
+hill-climbing sobre OOF. CV OOF: 0.76488.**
+
+Scoreboard (CV OOF 5-fold honesto; LB = leaderboard público):
+
+| Pipeline | CV | LB |
+|---|---|---|
+| Baseline LightGBM (commit inicial) | 0.7581 | — |
+| + features v1 | 0.7583 | — |
+| LGBM tuneado Optuna (v4/v6) | 0.7615 | — |
+| Blend 3 GBMs (v7) | 0.7637 | **0.7666** (pos. 169/462) |
+| + seed-averaging 5 seeds (v12) | 0.7646 | — |
+| **+ pseudo-labeling (v20, producción)** | **0.7649** | — |
+
+Experimentos v1–v21: una rama `exp/*` por experimento con README y resultados (incluye los
+negativos documentados: features de 2º nivel, KNN-500, TE-OOF, stacking, NN-MLP, PL ronda-2).
+Análisis pareado 5 seeds v20 vs v12: +0.00047 ± 0.00011 (t=9.5, p<0.005) — la mejora es sistemática.
+Decisión de submission final: **Repeated StratifiedKFold**, nunca public LB (ruido ±0.003 del subset).
+- Meta M3 (red de seguridad): pipeline end-to-end reproducible con seeds fijas y refs completo.
 
 ## Metodología
 
@@ -46,16 +63,22 @@ Copia `train.csv`, `test.csv` y `sample_submission.csv` a `data/raw/` (no se ver
 
 ## Uso
 ```bash
-python -m src.train            # CV 5-fold LightGBM -> outputs/ + submissions/
+python -m src.train                        # pipeline completa v20 (~4 h CPU) -> submissions/
+python -m src.train --seeds 42 --folds 2   # smoke test
+python -m src.train --no-pseudo            # solo pass 1 (equivale a v12)
 ```
-EDA en `notebooks/01_eda.ipynb`.
+Cada corrida guarda OOF/test preds (`.npy`), modelos, pesos del blend y `metrics.json` en
+`outputs/run_<timestamp>/`; 2 corridas con mismas seeds = mismo CSV. EDA en `notebooks/01_eda.ipynb`.
 
 ## Estructura
 ```
-src/config.py     rutas, SEED, seed_everything
+src/config.py     rutas, seeds, hiperparámetros tuneados (Optuna), umbral pseudo-label
 src/data.py       carga de datos
-src/features.py   limpieza y features
-src/train.py      CV + predicción + submission
+src/features.py   limpieza y features v1
+src/models.py     LGBM / CatBoost / XGBoost por seed con early stopping (+ pseudo-rows)
+src/blend.py      hill-climbing de pesos sobre OOF
+src/train.py      pipeline end-to-end: pass1 -> pseudo-labels -> pass2 -> blend -> submission
+experiments/      (en ramas exp/*) un experimento por rama con README y resultados
 notebooks/        EDA y experimentos
 submissions/      CSVs (solo final_submission.csv se versiona)
 refs.md           fuentes de código citadas

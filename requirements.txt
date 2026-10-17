@@ -1,7 +1,12 @@
-numpy>=1.26
-pandas>=2.2
-scikit-learn>=1.4
-lightgbm>=4.3
+# Versiones con las que se verificó src.train (revisión 2026-10-13).
+# Si tu entorno local es otro, reemplaza con tu `pip freeze` para reproducir el CSV exacto.
+numpy==2.5.3
+pandas==3.0.5
+scikit-learn==1.9.1
+lightgbm==4.7.0
+catboost==1.2.10
+xgboost==3.4.1
+optuna>=3.6
 matplotlib>=3.8
 seaborn>=0.13
 openpyxl>=3.1
