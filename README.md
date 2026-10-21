@@ -18,13 +18,15 @@ Hallazgos del EDA inicial (oct 2026):
 - `DAYS_EMPLOYED == 365243` es código especial en el **18%** de las filas → flag binario + NaN.
 - Alta cardinalidad: `ORGANIZATION_TYPE`, `OCCUPATION_TYPE` → target encoding **out-of-fold** con smoothing.
 
-## Estado actual
+## Estado actual (2026-10-21)
 
-**Pipeline de producción (`python -m src.train`): blend LGBM+CatBoost+XGBoost tuneados (Optuna),
-seed-averaging 5 seeds × 5 folds, pseudo-labeling 1 ronda (p<0.03 → negativos) y pesos por
-hill-climbing sobre OOF. CV OOF: 0.76488.**
+**Pipeline de producción (`python -m src.train`, main tras PR #14/#15/#17): blend de 5 miembros —
+LGBM+CatBoost+XGBoost tuneados (Optuna) + variantes descorrelacionadas `lgbm_init` y `lgbm_linear`
+(src/variants.py, v30) — seed-averaging 5 seeds × 10 folds, restricciones monótonas en EXT_SOURCE_1/2/3
+(LGBM/XGB), pseudo-labeling APAGADO (v27) y pesos por hill-climbing anidado.**
+**Blend anidado RSKF 3×5: 0.76439 ± ruido de partición ~0.0004** (src/validate.py, PR #15).
 
-Scoreboard (CV OOF 5-fold honesto; LB = leaderboard público):
+Scoreboard (CV OOF honesto; LB = leaderboard público):
 
 | Pipeline | CV | LB |
 |---|---|---|
@@ -33,12 +35,26 @@ Scoreboard (CV OOF 5-fold honesto; LB = leaderboard público):
 | LGBM tuneado Optuna (v4/v6) | 0.7615 | — |
 | Blend 3 GBMs (v7) | 0.7637 | **0.7666** (pos. 169/462) |
 | + seed-averaging 5 seeds (v12) | 0.7646 | — |
-| **+ pseudo-labeling (v20, producción)** | **0.7649** | — |
+| ~~+ pseudo-labeling (v20)~~ | ~~0.7649~~ inflado → corregido (v27) | — |
+| Blend 3 GBMs, RSKF anidado (PR #15) | 0.76426 | — |
+| **+ variantes v30 (`lgbm_init`+`lgbm_linear`, producción)** | **0.76439** | — |
 
-Experimentos v1–v21: una rama `exp/*` por experimento con README y resultados (incluye los
-negativos documentados: features de 2º nivel, KNN-500, TE-OOF, stacking, NN-MLP, PL ronda-2).
-Análisis pareado 5 seeds v20 vs v12: +0.00047 ± 0.00011 (t=9.5, p<0.005) — la mejora es sistemática.
-Decisión de submission final: **Repeated StratifiedKFold**, nunca public LB (ruido ±0.003 del subset).
+Correcciones metodológicas (2026-10-13, exp/pl-leak-v27, exp/monotone-v28, exp/monotone-blend-v29):
+- El +0.0003..+0.0005 atribuido al pseudo-labeling era **fuga de selección** (+0.00096 medida; con
+  labeler anidado por fold el efecto honesto es ~0). PL fuera de producción; `--pseudo` queda solo
+  para reproducción histórica.
+- Una ganancia pareada y sistemática también puede ser una *fuga sistemática*: toda selección de
+  datos auxiliares debe anidarse por fold.
+- Monotonías EXT_SOURCE: efecto real en componente LGBM (+0.00025, 5/5 seeds) pero se diluye en el
+  blend (+0.00002, n.s.); se conservan como regularización con prior de dominio.
+- Ruido de partición RSKF ~0.0004 → deltas < ~0.0008 en un solo split no son concluyentes (PR #15);
+  el sesgo de ajustar pesos de blend sobre el mismo OOF es pequeño (~0.0001).
+
+Experimentos v1–v30: una rama `exp/*` por experimento con README y resultados (incluye los negativos
+documentados: features de 2º nivel, KNN-500, TE-OOF, stacking, NN-MLP, PL ronda-2, VAE, TabPFN,
+frecuency-encoding, selección por permutación, variantes GBDT no adoptadas).
+Decisión de submission final: **Repeated StratifiedKFold**, nunca public LB (ruido ±0.003 del subset;
+el reglamento confirma leaderboard privado sobre el test completo al cierre).
 - Meta M3 (red de seguridad): pipeline end-to-end reproducible con seeds fijas y refs completo.
 
 ## Metodología
