@@ -21,23 +21,24 @@ import pandas as pd
 from sklearn.metrics import roc_auc_score
 
 from src.blend import apply_weights, fast_auc, hill_climb_weights
-from src.config import (EXTRA_MODELS, ID_COL, N_FOLDS, OUTPUT_DIR, PSEUDO_MAX_PROB, SEEDS,
+from src.config import (EXTRA_MODELS, FOLD_FEATURES, ID_COL, N_FOLDS, OUTPUT_DIR, PSEUDO_MAX_PROB, SEEDS,
                         SUBMISSION_DIR, TARGET, seed_everything)
 from src.data import load_data
 from src.features import build
 from src.models import run_cb, run_lgbm, run_xgb
+from src.structure import FoldFeatures
 from src.variants import run_variant
 
 BASE_MODELS = ["lgbm", "cb", "xgb"]
 
 
-def run_pass(X, y, X_test, cat_cols, seeds, n_folds, Xp=None, yp=None, save_dir=None, extra=()):
+def run_pass(X, y, X_test, cat_cols, seeds, n_folds, Xp=None, yp=None, save_dir=None, extra=(), fold_fn=None):
     oof, tpred = {}, {}
-    oof["lgbm"], tpred["lgbm"] = run_lgbm(X, y, X_test, seeds, n_folds, Xp, yp, save_dir)
-    oof["cb"], tpred["cb"] = run_cb(X, y, X_test, cat_cols, seeds, n_folds, Xp, yp, save_dir)
-    oof["xgb"], tpred["xgb"] = run_xgb(X, y, X_test, cat_cols, seeds, n_folds, Xp, yp, save_dir)
+    oof["lgbm"], tpred["lgbm"] = run_lgbm(X, y, X_test, seeds, n_folds, Xp, yp, save_dir, fold_fn)
+    oof["cb"], tpred["cb"] = run_cb(X, y, X_test, cat_cols, seeds, n_folds, Xp, yp, save_dir, fold_fn)
+    oof["xgb"], tpred["xgb"] = run_xgb(X, y, X_test, cat_cols, seeds, n_folds, Xp, yp, save_dir, fold_fn)
     for name in extra:  # variantes descorrelacionadas (src.variants), sin pseudo-rows
-        oof[name], tpred[name] = run_variant(name, X, y, X_test, cat_cols, seeds, n_folds)
+        oof[name], tpred[name] = run_variant(name, X, y, X_test, cat_cols, seeds, n_folds, fold_fn)
     # seed-averaging: media de OOF por seed (cada seed = SKF propio -> sigue siendo OOF honesto)
     return {m: o.mean(axis=0) for m, o in oof.items()}, \
            {m: t.mean(axis=0) for m, t in tpred.items()}, oof, tpred
@@ -61,6 +62,7 @@ def main():
     seed_everything(seeds[0])
 
     train, test, sample = load_data()
+    fold_fn = FoldFeatures(train, test, train[TARGET].values) if FOLD_FEATURES and not args.pseudo else None
     train, test, cat_cols = build(train, test)
     features = [c for c in train.columns if c not in (ID_COL, TARGET)]
     X, y = train[features], train[TARGET].values
@@ -71,7 +73,8 @@ def main():
     (out / "models").mkdir(parents=True, exist_ok=True)
 
     print("== pass 1 (sin pseudo) ==")
-    oof1, tp1, oof1_raw, tp1_raw = run_pass(X, y, X_test, cat_cols, seeds, args.folds, extra=extra)
+    oof1, tp1, oof1_raw, tp1_raw = run_pass(X, y, X_test, cat_cols, seeds, args.folds, extra=extra,
+                                                fold_fn=fold_fn)
     for m in extra:  # mismo formato que src.variants -> src.validate --add funciona sobre esta corrida
         np.save(out / f"test_{m}_perseed.npy", tp1_raw[m])
     for m in models:  # per-seed OOF: insumo del RSKF pareado de seleccion final (nov)

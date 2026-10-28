@@ -51,6 +51,10 @@ ES_ROUNDS = 300
 # las 3 seeds del RSKF 3x5 (python -m src.validate <run> --add <nombre>)
 EXTRA_MODELS = ["lgbm_init", "lgbm_linear"]
 
+# Features con target por fold (src.structure.FoldFeatures, exp v34): target de clientes
+# repetidos + TE del ratio crédito/anualidad, solo con labels del fold de train
+FOLD_FEATURES = True
+
 # Pesos del blend por hill-climbing sobre OOF (exp/pseudo-pipeline-v20)
 BLEND_WEIGHTS = {"lgbm": 0.29, "cb": 0.37, "xgb": 0.34}
 

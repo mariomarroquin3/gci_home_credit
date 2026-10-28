@@ -34,7 +34,7 @@ from sklearn.preprocessing import OneHotEncoder, QuantileTransformer
 from src.config import ES_ROUNDS, ID_COL, LGBM_PARAMS, MAX_ROUNDS, TARGET, XGB_PARAMS
 from src.data import load_data
 from src.features import build
-from src.models import _folds, _monotone
+from src.models import _folds, _monotone, with_fold
 
 LGBM_VARIANTS = {
     "lgbm_dart": dict(boosting="dart", learning_rate=0.05, drop_rate=0.1, skip_drop=0.5, max_drop=50),
@@ -92,12 +92,13 @@ def _sigmoid(z):
     return 1 / (1 + np.exp(-z))
 
 
-def run_lgbm_variant(name, X, y, X_test, cat_cols, seeds, n_folds):
-    oof = np.zeros((len(seeds), len(X)))
-    tpred = np.zeros((len(seeds), len(X_test)))
+def run_lgbm_variant(name, X0, y, X_test0, cat_cols, seeds, n_folds, fold_fn=None):
+    oof = np.zeros((len(seeds), len(X0)))
+    tpred = np.zeros((len(seeds), len(X_test0)))
     over = LGBM_VARIANTS[name]
     for si, seed in enumerate(seeds):
         for tr, va in _folds(y, n_folds, seed):
+            X, X_test = with_fold(X0, X_test0, fold_fn, tr, seed)
             params = dict(LGBM_PARAMS, **over, seed=seed)
             if not over.get("linear_tree"):  # linear_tree no soporta monotonía
                 params.update(monotone_constraints=_monotone(X.columns),
@@ -125,15 +126,16 @@ def run_lgbm_variant(name, X, y, X_test, cat_cols, seeds, n_folds):
     return oof, tpred
 
 
-def run_xgb_variant(name, X, y, X_test, cat_cols, seeds, n_folds):
-    Xd = pd.get_dummies(X, columns=cat_cols, dummy_na=True)
-    Xd_test = pd.get_dummies(X_test, columns=cat_cols, dummy_na=True).reindex(columns=Xd.columns, fill_value=0)
-    mono = "(" + ",".join(map(str, _monotone(Xd.columns))) + ")"
-    dtest = xgb.DMatrix(Xd_test)
+def run_xgb_variant(name, X, y, X_test, cat_cols, seeds, n_folds, fold_fn=None):
+    Xd0 = pd.get_dummies(X, columns=cat_cols, dummy_na=True)
+    Xd_test0 = pd.get_dummies(X_test, columns=cat_cols, dummy_na=True).reindex(columns=Xd0.columns, fill_value=0)
     oof = np.zeros((len(seeds), len(X)))
     tpred = np.zeros((len(seeds), len(X_test)))
     for si, seed in enumerate(seeds):
         for tr, va in _folds(y, n_folds, seed):
+            Xd, Xd_test = with_fold(Xd0, Xd_test0, fold_fn, tr, seed)
+            mono = "(" + ",".join(map(str, _monotone(Xd.columns))) + ")"
+            dtest = xgb.DMatrix(Xd_test)
             dva = xgb.DMatrix(Xd.iloc[va], y[va])
             m = xgb.train(dict(XGB_PARAMS, **XGB_VARIANTS[name], seed=seed, monotone_constraints=mono),
                           xgb.DMatrix(Xd.iloc[tr], y[tr]), num_boost_round=MAX_ROUNDS["xgb"],
@@ -145,9 +147,9 @@ def run_xgb_variant(name, X, y, X_test, cat_cols, seeds, n_folds):
     return oof, tpred
 
 
-def run_variant(name, X, y, X_test, cat_cols, seeds, n_folds):
+def run_variant(name, X, y, X_test, cat_cols, seeds, n_folds, fold_fn=None):
     fn = run_xgb_variant if name in XGB_VARIANTS else run_lgbm_variant
-    return fn(name, X, y, X_test, cat_cols, seeds, n_folds)
+    return fn(name, X, y, X_test, cat_cols, seeds, n_folds, fold_fn)
 
 
 def main():

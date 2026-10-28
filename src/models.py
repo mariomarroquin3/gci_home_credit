@@ -18,16 +18,28 @@ def _monotone(columns):
     return [-1 if c in MONOTONE_DEC else 0 for c in columns]
 
 
+def with_fold(X, X_test, fold_fn, tr, seed):
+    """Añade features con target del fold (src.structure.FoldFeatures); None = sin cambios."""
+    if fold_fn is None:
+        return X, X_test
+    F_tr, F_te = fold_fn(tr, seed)
+    return (pd.concat([X, F_tr.set_axis(X.index)], axis=1),
+            pd.concat([X_test, F_te.set_axis(X_test.index)], axis=1))
+
+
 def _folds(y, n_folds, seed):
     return StratifiedKFold(n_splits=n_folds, shuffle=True, random_state=seed).split(
         np.zeros(len(y)), y)
 
 
-def run_lgbm(X, y, X_test, seeds, n_folds, X_pseudo=None, y_pseudo=None, save_dir=None):
+def run_lgbm(X0, y, X_test0, seeds, n_folds, X_pseudo=None, y_pseudo=None, save_dir=None, fold_fn=None):
+    assert fold_fn is None or X_pseudo is None, "pseudo-labels + FoldFeatures no soportado"
+    X, X_test = X0, X_test0
     oof = np.zeros((len(seeds), len(X)))
     tpred = np.zeros((len(seeds), len(X_test)))
     for si, seed in enumerate(seeds):
         for fi, (tr, va) in enumerate(_folds(y, n_folds, seed)):
+            X, X_test = with_fold(X0, X_test0, fold_fn, tr, seed)
             X_tr, y_tr = X.iloc[tr], y[tr]
             if X_pseudo is not None:
                 X_tr = pd.concat([X_tr, X_pseudo], ignore_index=True)
@@ -53,13 +65,15 @@ def _cb_str(df, cat_cols):
     return out
 
 
-def run_cb(X, y, X_test, cat_cols, seeds, n_folds, X_pseudo=None, y_pseudo=None, save_dir=None):
-    Xs = _cb_str(X, cat_cols)
-    Xs_test = _cb_str(X_test, cat_cols)
+def run_cb(X, y, X_test, cat_cols, seeds, n_folds, X_pseudo=None, y_pseudo=None, save_dir=None, fold_fn=None):
+    assert fold_fn is None or X_pseudo is None, "pseudo-labels + FoldFeatures no soportado"
+    Xs0 = _cb_str(X, cat_cols)
+    Xs_test0 = _cb_str(X_test, cat_cols)
     oof = np.zeros((len(seeds), len(X)))
     tpred = np.zeros((len(seeds), len(X_test)))
     for si, seed in enumerate(seeds):
         for fi, (tr, va) in enumerate(_folds(y, n_folds, seed)):
+            Xs, Xs_test = with_fold(Xs0, Xs_test0, fold_fn, tr, seed)
             X_tr, y_tr = Xs.iloc[tr], y[tr]
             if X_pseudo is not None:
                 X_tr = pd.concat([X_tr, _cb_str(X_pseudo, cat_cols)], ignore_index=True)
@@ -74,15 +88,17 @@ def run_cb(X, y, X_test, cat_cols, seeds, n_folds, X_pseudo=None, y_pseudo=None,
     return oof, tpred
 
 
-def run_xgb(X, y, X_test, cat_cols, seeds, n_folds, X_pseudo=None, y_pseudo=None, save_dir=None):
-    Xd = pd.get_dummies(X, columns=cat_cols, dummy_na=True)
-    Xd_test = pd.get_dummies(X_test, columns=cat_cols, dummy_na=True).reindex(columns=Xd.columns, fill_value=0)
-    mono = "(" + ",".join(map(str, _monotone(Xd.columns))) + ")"
-    Xd_pseudo = Xd_test.iloc[X_pseudo.index].reset_index(drop=True) if X_pseudo is not None else None
+def run_xgb(X, y, X_test, cat_cols, seeds, n_folds, X_pseudo=None, y_pseudo=None, save_dir=None, fold_fn=None):
+    assert fold_fn is None or X_pseudo is None, "pseudo-labels + FoldFeatures no soportado"
+    Xd0 = pd.get_dummies(X, columns=cat_cols, dummy_na=True)
+    Xd_test0 = pd.get_dummies(X_test, columns=cat_cols, dummy_na=True).reindex(columns=Xd0.columns, fill_value=0)
+    Xd_pseudo = Xd_test0.iloc[X_pseudo.index].reset_index(drop=True) if X_pseudo is not None else None
     oof = np.zeros((len(seeds), len(X)))
     tpred = np.zeros((len(seeds), len(X_test)))
     for si, seed in enumerate(seeds):
         for fi, (tr, va) in enumerate(_folds(y, n_folds, seed)):
+            Xd, Xd_test = with_fold(Xd0, Xd_test0, fold_fn, tr, seed)
+            mono = "(" + ",".join(map(str, _monotone(Xd.columns))) + ")"
             X_tr, y_tr = Xd.iloc[tr], y[tr]
             if Xd_pseudo is not None:
                 X_tr = pd.concat([X_tr, Xd_pseudo], ignore_index=True)
