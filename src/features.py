@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 
+from src.structure import add_structure
+
 DAYS_EMPLOYED_SENTINEL = 365243
 NA_FLAG_COLS = ["EXT_SOURCE_1", "EXT_SOURCE_3", "OWN_CAR_AGE", "AMT_REQ_CREDIT_BUREAU_YEAR"]
 
@@ -53,6 +55,8 @@ def to_category(train: pd.DataFrame, test: pd.DataFrame):
 
 
 def build(train: pd.DataFrame, test: pd.DataFrame):
-    train = add_features(clean(train))
-    test = add_features(clean(test))
+    # señal estructural sin target (exp v34): necesita train+test juntos (grupos y frecuencias)
+    st = add_structure(pd.concat([train.drop(columns="TARGET", errors="ignore"), test], ignore_index=True))
+    train = pd.concat([add_features(clean(train)), st.iloc[:len(train)].set_axis(train.index)], axis=1)
+    test = pd.concat([add_features(clean(test)), st.iloc[len(train):].set_axis(test.index)], axis=1)
     return to_category(train, test)
