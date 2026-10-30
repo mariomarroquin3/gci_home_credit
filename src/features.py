@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 
+from src.aux_models import add_aux
+from src.config import AUX_FEATURES
 from src.structure import add_structure
 
 DAYS_EMPLOYED_SENTINEL = 365243
@@ -54,9 +56,15 @@ def to_category(train: pd.DataFrame, test: pd.DataFrame):
     return train, test, cats
 
 
-def build(train: pd.DataFrame, test: pd.DataFrame):
+def build(train: pd.DataFrame, test: pd.DataFrame, aux: bool = AUX_FEATURES):
     # señal estructural sin target (exp v34): necesita train+test juntos (grupos y frecuencias)
     st = add_structure(pd.concat([train.drop(columns="TARGET", errors="ignore"), test], ignore_index=True))
     train = pd.concat([add_features(clean(train)), st.iloc[:len(train)].set_axis(train.index)], axis=1)
     test = pd.concat([add_features(clean(test)), st.iloc[len(train):].set_axis(test.index)], axis=1)
-    return to_category(train, test)
+    train, test, cats = to_category(train, test)
+    if aux:  # modelos auxiliares sin target sobre train+test (exp v35)
+        feats = [c for c in train.columns if c not in ("SK_ID_CURR", "TARGET")]
+        A = add_aux(pd.concat([train[feats], test[feats]], ignore_index=True))
+        train = pd.concat([train, A.iloc[:len(train)].set_axis(train.index)], axis=1)
+        test = pd.concat([test, A.iloc[len(train):].set_axis(test.index)], axis=1)
+    return train, test, cats

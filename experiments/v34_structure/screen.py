@@ -178,7 +178,7 @@ def main():
     freq = freq_feats(raw)
     twin = twin_feats(raw, gids)
     ca3 = (raw.AMT_CREDIT / raw.AMT_ANNUITY).round(3).values
-    trb, teb, cats = build(train, test)
+    trb, teb, cats = build(train, test, aux=False)
     feats = [c for c in trb.columns if c not in (ID_COL, TARGET)]
     X0 = pd.concat([trb[feats], teb[feats]], ignore_index=True)
     y = train[TARGET].values
