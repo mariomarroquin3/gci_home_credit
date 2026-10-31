@@ -113,17 +113,17 @@ class TimeTarget:
         return pd.DataFrame(out)
 
 
-def oof_regress(Xall, target, seed=0, folds=5):
+def oof_regress(Xall, target, seed=0, folds=5, lr=0.05, rounds=600):
     """Predicción OOF (sobre train+test, sin TARGET) de una columna a partir del resto."""
     has = ~np.isnan(target)
     pred = np.full(len(target), np.nan)
     idx = np.where(has)[0]
-    p = dict(objective="regression", learning_rate=0.05, num_leaves=63, min_child_samples=100,
+    p = dict(objective="regression", learning_rate=lr, num_leaves=63, min_child_samples=100,
              feature_fraction=0.7, bagging_fraction=0.8, bagging_freq=1, verbose=-1, seed=seed,
              deterministic=True, force_row_wise=True)
     nofit = np.zeros(len(target))
     for a, b in KFold(folds, shuffle=True, random_state=seed).split(idx):
-        m = lgb.train(p, lgb.Dataset(Xall.iloc[idx[a]], target[idx[a]]), 600)
+        m = lgb.train(p, lgb.Dataset(Xall.iloc[idx[a]], target[idx[a]]), rounds)
         pred[idx[b]] = m.predict(Xall.iloc[idx[b]])
         if (~has).any():
             nofit[~has] += m.predict(Xall.iloc[np.where(~has)[0]]) / folds
@@ -136,12 +136,13 @@ def main():
     ap.add_argument("--seeds", default="42,43")
     ap.add_argument("--sets", default="base,uf,gd,tt,ext,rr")
     ap.add_argument("--folds", type=int, default=5)
+    ap.add_argument("--aux", action="store_true", help="base con modelos auxiliares v35")
     args = ap.parse_args()
     t0 = time.time()
     train, test, _ = load_data()
     n = len(train)
     raw = pd.concat([train.drop(columns=TARGET), test], ignore_index=True)
-    trb, teb, cats = build(train, test, aux=False)
+    trb, teb, cats = build(train, test, aux=args.aux)
     feats = [c for c in trb.columns if c not in (ID_COL, TARGET)]
     X0 = pd.concat([trb[feats], teb[feats]], ignore_index=True)
     y = train[TARGET].values
@@ -187,6 +188,53 @@ def main():
             p = oof_regress(X0.drop(columns=dr), v)
             f[f"{c}_RES"] = v - p
         S["res"] = f
+    has = lambda k: any(k in s.split("+") for s in sets)
+    AUXC = [c for c in X0.columns if c.endswith(("_PRED", "_RES"))]
+    if has("res2"):
+        f = pd.DataFrame(index=raw.index)
+        cr = [c for c in X0.columns if c.startswith(("RATE_", "TERM_", "CA_R", "CREDIT_"))]
+        tg = {"AMT_CREDIT": (np.log(raw.AMT_CREDIT), ["AMT_CREDIT", "DOWNPAYMENT", "ka_credit_rel"] + cr),
+              "REGION_POPULATION_RELATIVE": (raw.REGION_POPULATION_RELATIVE, ["REGION_POPULATION_RELATIVE"]),
+              "DAYS_REGISTRATION": (raw.DAYS_REGISTRATION, ["DAYS_REGISTRATION", "REGISTRATION_YEARS"]),
+              "DAYS_ID_PUBLISH": (raw.DAYS_ID_PUBLISH, ["DAYS_ID_PUBLISH"]),
+              "DAYS_LAST_PHONE_CHANGE": (raw.DAYS_LAST_PHONE_CHANGE, ["DAYS_LAST_PHONE_CHANGE", "PHONE_CHANGE_YEARS"]),
+              "OWN_CAR_AGE": (raw.OWN_CAR_AGE, ["OWN_CAR_AGE", "OWN_CAR_AGE_ISNA"]),
+              "AMT_REQ_CREDIT_BUREAU_YEAR": (raw.AMT_REQ_CREDIT_BUREAU_YEAR, ["AMT_REQ_CREDIT_BUREAU_YEAR", "BUREAU_REQ_TOTAL", "AMT_REQ_CREDIT_BUREAU_YEAR_ISNA"])}
+        for c, (v, dr) in tg.items():
+            v = np.asarray(v, float)
+            f[f"{c}_RES2"] = v - oof_regress(X0.drop(columns=dr + AUXC), v)
+        S["res2"] = f
+    if has("nares"):
+        f = pd.DataFrame(index=raw.index)
+        for c in ["EXT_SOURCE_1", "EXT_SOURCE_3", "OWN_CAR_AGE", "OCCUPATION_TYPE", "AMT_REQ_CREDIT_BUREAU_YEAR"]:
+            v = raw[c].isna().values.astype(float)
+            dr = [k for k in X0.columns if k.startswith(c)] + AUXC
+            f[f"{c}_NARES"] = v - oof_regress(X0.drop(columns=dr), v)
+        S["nares"] = f
+    if has("extb"):
+        f = pd.DataFrame(index=raw.index)
+        Xn = X0.drop(columns=[c for c in X0.columns if c.startswith("EXT_SOURCE")] + AUXC)
+        for c in ["EXT_SOURCE_1", "EXT_SOURCE_2", "EXT_SOURCE_3"]:
+            p = oof_regress(Xn, raw[c].values.astype(float), folds=10, lr=0.02, rounds=2000)
+            f[f"{c}_PREDB"] = p
+            f[f"{c}_RESB"] = raw[c].values - p
+        S["extb"] = f
+    if has("extagg"):
+        f = pd.DataFrame(index=raw.index)
+        E = np.column_stack([X0[c].values for c in ["EXT_SOURCE_1", "EXT_SOURCE_2", "EXT_SOURCE_3"]]).astype(float)
+        P = np.column_stack([X0[f"{c}_PRED"].values for c in ["EXT_SOURCE_1", "EXT_SOURCE_2", "EXT_SOURCE_3"]]).astype(float)
+        F = np.where(np.isnan(E), P, E)
+        f["EXT_MEAN"] = np.nanmean(E, 1)
+        f["EXT_STD"] = np.nanstd(E, 1)
+        f["EXT_PROD_F"] = F.prod(1)
+        f["EXT_MEAN_F"] = F.mean(1)
+        f["EXT_MIN_F"] = F.min(1)
+        f["EXT_WMEAN_F"] = (2 * F[:, 0] + 3 * F[:, 1] + 4 * F[:, 2]) / 9
+        for i, c in enumerate(["E1", "E2", "E3"]):
+            f[f"{c}_FILL"] = F[:, i]
+        f["EXT_F_x_CA"] = f["EXT_MEAN_F"] * X0["CREDIT_ANNUITY"].values
+        f["EXT_F_x_AGE"] = f["EXT_MEAN_F"] * X0["AGE_YEARS"].values
+        S["extagg"] = f
     if any("rr" in s for s in sets):
         f = pd.DataFrame(index=raw.index)
         rate_cols = [c for c in X0.columns if c.startswith(("RATE_", "TERM_", "CA_R", "CREDIT_ANNUITY"))]
