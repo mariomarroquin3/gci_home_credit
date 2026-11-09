@@ -54,6 +54,7 @@ def main():
     ap.add_argument("--pseudo", action="store_true")
     ap.add_argument("--extra", type=str, default=",".join(EXTRA_MODELS),
                     help="miembros extra de src.variants separados por coma ('' = ninguno)")
+    ap.add_argument("--no-aux", action="store_true", help="sin modelos auxiliares (pipeline v34)")
     ap.add_argument("--tag", type=str, default="")
     args = ap.parse_args()
     seeds = [int(s) for s in args.seeds.split(",")]
@@ -63,7 +64,7 @@ def main():
 
     train, test, sample = load_data()
     fold_fn = FoldFeatures(train, test, train[TARGET].values) if FOLD_FEATURES and not args.pseudo else None
-    train, test, cat_cols = build(train, test)
+    train, test, cat_cols = build(train, test, aux=not args.no_aux)
     features = [c for c in train.columns if c not in (ID_COL, TARGET)]
     X, y = train[features], train[TARGET].values
     X_test = test[features]

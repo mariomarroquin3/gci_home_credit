@@ -55,6 +55,10 @@ EXTRA_MODELS = ["lgbm_init", "lgbm_linear"]
 # repetidos + TE del ratio crédito/anualidad, solo con labels del fold de train
 FOLD_FEATURES = True
 
+# Modelos auxiliares sin target (src.aux_models, exp v35): predicción/residuo de EXT_SOURCE,
+# ingreso, anualidad, empleo y precio. Screening LGBM +0.0019, XGB +0.0010
+AUX_FEATURES = True
+
 # Pesos del blend por hill-climbing sobre OOF (exp/pseudo-pipeline-v20)
 BLEND_WEIGHTS = {"lgbm": 0.29, "cb": 0.37, "xgb": 0.34}
 
